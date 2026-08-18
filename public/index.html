@@ -141,9 +141,11 @@
         if (track.kind === 'audio' && role === 'host') {
           const audio = document.createElement('audio');
           audio.autoplay = true;
+          audio.controls = true;
           audio.srcObject = streams[0];
           audio.dataset.viewerId = connectionId || '';
           document.body.append(audio);
+          audio.play().catch(() => setStatus('Clique em qualquer botão para liberar o áudio recebido.'));
           return;
         }
         remoteVideo.srcObject = streams[0];
@@ -153,6 +155,7 @@
       };
       const audioTransceiver = connection.addTransceiver('audio', { direction: 'sendrecv' });
       if (voiceStream) audioTransceiver.sender.replaceTrack(voiceStream.getAudioTracks()[0]);
+      connection.voiceSender = audioTransceiver.sender;
       connection.onconnectionstatechange = () => { if (['failed', 'disconnected'].includes(connection.connectionState)) setStatus('Conexão interrompida.'); };
       if (connectionId) hostPeers.set(connectionId, connection);
       else peer = connection;
@@ -181,7 +184,7 @@
       if (message.type === 'offer') {
         await ensureVoice();
         const connection = makePeer(); await connection.setRemoteDescription(message.offer);
-        if (voiceStream) await connection.getSenders().find((sender) => sender.track?.kind === 'audio')?.replaceTrack(voiceStream.getAudioTracks()[0]);
+        if (voiceStream && connection.voiceSender) await connection.voiceSender.replaceTrack(voiceStream.getAudioTracks()[0]);
         await flushCandidates(connection, 'viewer');
         const answer = await connection.createAnswer(); await connection.setLocalDescription(answer); send({ type: 'answer', answer });
       }
