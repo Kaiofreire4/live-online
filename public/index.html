@@ -93,7 +93,9 @@
     const socket = new WebSocket(signalingUrl);
     let peer;
     let localStream;
-    const pendingCandidates = [];
+    let viewerId;
+    const hostPeers = new Map();
+    const pendingCandidates = new Map();
     let role;
 
     const setStatus = (text) => { status.textContent = text; };
@@ -105,17 +107,25 @@
       socket.send(JSON.stringify(message));
       return true;
     };
-    const makePeer = () => {
-      peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-      peer.onicecandidate = ({ candidate }) => candidate && send({ type: 'ice-candidate', candidate });
-      peer.ontrack = ({ streams }) => {
+    const makePeer = (connectionId = null) => {
+      const connection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      connection.onicecandidate = ({ candidate }) => candidate && send({ type: 'ice-candidate', candidate, ...(connectionId ? { target: connectionId } : {}) });
+      connection.ontrack = ({ streams }) => {
         remoteVideo.srcObject = streams[0];
         remoteVideo.muted = false;
         remoteVideo.play().catch(() => setStatus('Clique em “Ativar som” para ouvir a transmissão.'));
         setStatus('Transmissão conectada.');
       };
-      peer.onconnectionstatechange = () => { if (['failed', 'disconnected'].includes(peer.connectionState)) setStatus('Conexão interrompida.'); };
-      return peer;
+      connection.onconnectionstatechange = () => { if (['failed', 'disconnected'].includes(connection.connectionState)) setStatus('Conexão interrompida.'); };
+      if (connectionId) hostPeers.set(connectionId, connection);
+      else peer = connection;
+      return connection;
+    };
+
+    const flushCandidates = async (connection, key) => {
+      const candidates = pendingCandidates.get(key) || [];
+      while (candidates.length) await connection.addIceCandidate(candidates.shift());
+      pendingCandidates.delete(key);
     };
 
     socket.onopen = () => setStatus('Sinalização conectada. Escolha uma ação.');
@@ -124,26 +134,34 @@
     socket.onmessage = async ({ data }) => {
       const message = JSON.parse(data);
       if (message.type === 'room-created') { roomId.textContent = message.roomId; roomCode.classList.add('visible'); setStatus('Sala criada. Aguardando seu amigo.'); }
-      if (message.type === 'joined-room') { setStatus('Sala encontrada. Conectando...'); makePeer(); }
+      if (message.type === 'joined-room') { viewerId = message.viewerId; setStatus('Sala encontrada. Conectando...'); }
       if (message.type === 'viewer-joined') {
-        setStatus('Amigo encontrado. Negociando conexão...'); makePeer();
-        localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
-        const offer = await peer.createOffer(); await peer.setLocalDescription(offer); send({ type: 'offer', offer });
+        setStatus(`Espectador ${message.count} conectado. Negociando conexão...`);
+        const connection = makePeer(message.viewerId);
+        localStream.getTracks().forEach((track) => connection.addTrack(track, localStream));
+        const offer = await connection.createOffer(); await connection.setLocalDescription(offer); send({ type: 'offer', offer, target: message.viewerId });
       }
       if (message.type === 'offer') {
-        makePeer(); await peer.setRemoteDescription(message.offer);
-        while (pendingCandidates.length) await peer.addIceCandidate(pendingCandidates.shift());
-        const answer = await peer.createAnswer(); await peer.setLocalDescription(answer); send({ type: 'answer', answer });
+        const connection = makePeer(); await connection.setRemoteDescription(message.offer);
+        await flushCandidates(connection, 'viewer');
+        const answer = await connection.createAnswer(); await connection.setLocalDescription(answer); send({ type: 'answer', answer });
       }
       if (message.type === 'answer') {
-        await peer.setRemoteDescription(message.answer);
-        while (pendingCandidates.length) await peer.addIceCandidate(pendingCandidates.shift());
+        const connection = hostPeers.get(message.viewerId);
+        if (connection) { await connection.setRemoteDescription(message.answer); await flushCandidates(connection, message.viewerId); }
       }
-      if (message.type === 'ice-candidate' && peer) {
-        if (peer.remoteDescription) await peer.addIceCandidate(message.candidate);
-        else pendingCandidates.push(message.candidate);
+      if (message.type === 'ice-candidate') {
+        const key = role === 'host' ? message.viewerId : 'viewer';
+        const connection = role === 'host' ? hostPeers.get(message.viewerId) : peer;
+        if (connection) {
+          if (connection.remoteDescription) await connection.addIceCandidate(message.candidate);
+          else pendingCandidates.set(key, [...(pendingCandidates.get(key) || []), message.candidate]);
+        }
       }
-      if (message.type === 'peer-left') { remoteVideo.srcObject = null; setStatus('Seu amigo saiu da sala.'); }
+      if (message.type === 'peer-left') {
+        if (role === 'host') { hostPeers.get(message.viewerId)?.close(); hostPeers.delete(message.viewerId); setStatus('Um espectador saiu da sala.'); }
+        else { remoteVideo.srcObject = null; setStatus('O transmissor saiu da sala.'); }
+      }
       if (message.type === 'error') setStatus(message.message);
     };
 

@@ -6,16 +6,11 @@ const { WebSocketServer } = require('ws');
 
 const publicDir = path.join(__dirname, 'public');
 const port = Number(process.env.PORT) || 3000;
+const maxViewers = 12;
 const rooms = new Map();
 
 function send(socket, message) {
   if (socket.readyState === 1) socket.send(JSON.stringify(message));
-}
-
-function relay(room, sender, message) {
-  for (const peer of [room.host, room.viewer]) {
-    if (peer && peer !== sender) send(peer, message);
-  }
 }
 
 const server = http.createServer((request, response) => {
@@ -45,7 +40,7 @@ wss.on('connection', (socket) => {
 
     if (message.type === 'create-room') {
       const roomId = crypto.randomBytes(3).toString('hex').toUpperCase();
-      rooms.set(roomId, { host: socket, viewer: null });
+      rooms.set(roomId, { host: socket, viewers: new Map() });
       socket.roomId = roomId;
       socket.role = 'host';
       return send(socket, { type: 'room-created', roomId });
@@ -54,17 +49,25 @@ wss.on('connection', (socket) => {
     if (message.type === 'join-room') {
       const room = rooms.get(String(message.roomId || '').toUpperCase());
       if (!room) return send(socket, { type: 'error', message: 'Sala não encontrada.' });
-      if (room.viewer) return send(socket, { type: 'error', message: 'Essa sala já está cheia.' });
-      room.viewer = socket;
+      if (room.viewers.size >= maxViewers) return send(socket, { type: 'error', message: 'Essa sala já atingiu o limite de espectadores.' });
+      const viewerId = crypto.randomBytes(4).toString('hex');
+      room.viewers.set(viewerId, socket);
       socket.roomId = String(message.roomId).toUpperCase();
       socket.role = 'viewer';
-      send(socket, { type: 'joined-room', roomId: socket.roomId });
-      return send(room.host, { type: 'viewer-joined' });
+      socket.viewerId = viewerId;
+      send(socket, { type: 'joined-room', roomId: socket.roomId, viewerId });
+      return send(room.host, { type: 'viewer-joined', viewerId, count: room.viewers.size });
     }
 
     if (socket.roomId && ['offer', 'answer', 'ice-candidate'].includes(message.type)) {
       const room = rooms.get(socket.roomId);
-      if (room) relay(room, socket, message);
+      if (!room) return;
+      if (socket.role === 'host') {
+        const viewer = room.viewers.get(message.target);
+        if (viewer) send(viewer, message);
+      } else {
+        send(room.host, { ...message, viewerId: socket.viewerId });
+      }
     }
   });
 
@@ -72,9 +75,13 @@ wss.on('connection', (socket) => {
     if (!socket.roomId) return;
     const room = rooms.get(socket.roomId);
     if (!room) return;
-    relay(room, socket, { type: 'peer-left' });
-    if (room.host === socket) rooms.delete(socket.roomId);
-    else room.viewer = null;
+    if (room.host === socket) {
+      for (const viewer of room.viewers.values()) send(viewer, { type: 'peer-left' });
+      rooms.delete(socket.roomId);
+    } else {
+      room.viewers.delete(socket.viewerId);
+      send(room.host, { type: 'peer-left', viewerId: socket.viewerId });
+    }
   });
 });
 

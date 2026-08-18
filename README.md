@@ -2,6 +2,8 @@
 
 Protótipo de compartilhamento de tela P2P com WebRTC. O servidor só faz a sinalização via WebSocket; áudio e vídeo não passam por ele.
 
+Cada sala aceita 1 transmissor e até 12 espectadores. A conexão é uma malha direta do transmissor para cada espectador, então o uso de upload aumenta conforme novas pessoas entram.
+
 ## Executar
 
 No PowerShell, dentro desta pasta:
