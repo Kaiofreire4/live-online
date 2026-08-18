@@ -179,6 +179,7 @@
         setStatus(`Espectador ${message.count} conectado. Negociando conexão...`);
         const connection = makePeer(message.viewerId);
         localStream.getTracks().forEach((track) => connection.addTrack(track, localStream));
+        if (voiceStream && connection.voiceSender) await connection.voiceSender.replaceTrack(voiceStream.getAudioTracks()[0]);
         const offer = await connection.createOffer(); await connection.setLocalDescription(offer); send({ type: 'offer', offer, target: message.viewerId });
       }
       if (message.type === 'offer') {
@@ -227,6 +228,11 @@
     };
     const ensureVoice = async () => {
       if (voiceStream) return true;
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        voiceButton.textContent = 'Microfone indisponível';
+        setStatus('O microfone exige HTTPS ou http://localhost.');
+        return false;
+      }
       try {
         voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         voiceButton.textContent = 'Microfone ativo';
