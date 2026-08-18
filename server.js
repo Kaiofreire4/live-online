@@ -72,10 +72,14 @@ wss.on('connection', (socket) => {
       if (!room) return;
       for (const viewer of room.viewers.values()) {
         send(viewer, { type: 'room-ended' });
-        viewer.close();
+        viewer.roomId = null;
+        viewer.role = null;
+        viewer.viewerId = null;
       }
       rooms.delete(socket.roomId);
-      return socket.close();
+      socket.roomId = null;
+      socket.role = null;
+      return;
     }
 
     if (message.type === 'chat' && socket.roomId) {

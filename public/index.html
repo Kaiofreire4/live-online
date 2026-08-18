@@ -274,7 +274,10 @@
 
     const flushCandidates = async (connection, key) => {
       const candidates = pendingCandidates.get(key) || [];
-      while (candidates.length) await connection.addIceCandidate(candidates.shift());
+      while (candidates.length) {
+        try { await connection.addIceCandidate(candidates.shift()); }
+        catch { setStatus('Não foi possível concluir a conexão de voz.'); }
+      }
       pendingCandidates.delete(key);
     };
 
@@ -310,16 +313,28 @@
       if (message.type === 'ice-candidate') {
         const key = role === 'host' ? message.viewerId : 'viewer';
         const connection = role === 'host' ? hostPeers.get(message.viewerId) : peer;
-        if (connection) {
-          if (connection.remoteDescription) await connection.addIceCandidate(message.candidate);
-          else pendingCandidates.set(key, [...(pendingCandidates.get(key) || []), message.candidate]);
+        if (!connection || !connection.remoteDescription) {
+          pendingCandidates.set(key, [...(pendingCandidates.get(key) || []), message.candidate]);
+        } else {
+          try { await connection.addIceCandidate(message.candidate); }
+          catch { setStatus('Não foi possível concluir a conexão de voz.'); }
         }
       }
       if (message.type === 'peer-left') {
         if (role === 'host') { hostPeers.get(message.viewerId)?.close(); hostPeers.delete(message.viewerId); removerAudioRemoto(message.viewerId); setStatus('Um espectador saiu da sala.'); }
         else { remoteVideo.srcObject = null; removerAudioRemoto(); setStatus('O transmissor saiu da sala.'); }
       }
-      if (message.type === 'room-ended') { remoteVideo.srcObject = null; removerAudioRemoto(); setStatus('A transmissão foi encerrada.'); }
+      if (message.type === 'room-ended') {
+        remoteVideo.srcObject = null;
+        peer?.close();
+        peer = null;
+        role = null;
+        viewerId = null;
+        joinButton.disabled = false;
+        removerAudioRemoto();
+        showCallStatus('error', 'A transmissão foi encerrada.');
+        setStatus('A transmissão foi encerrada. Você pode entrar em outra sala.');
+      }
       if (message.type === 'chat') {
         const item = document.createElement('div'); item.className = 'message';
         const author = document.createElement('strong'); author.textContent = message.sender;
@@ -381,7 +396,22 @@
       localStream?.getTracks().forEach((track) => track.stop());
       voiceStream?.getTracks().forEach((track) => track.stop());
       hostPeers.forEach((connection) => connection.close());
-      peer?.close(); socket.close(); stopButton.classList.remove('visible'); startButton.disabled = true; setStatus('Transmissão encerrada. Atualize a página para iniciar outra.');
+      hostPeers.clear();
+      peer?.close();
+      peer = null;
+      localStream = null;
+      voiceStream = null;
+      role = null;
+      viewerId = null;
+      localVideo.srcObject = null;
+      remoteVideo.srcObject = null;
+      removerAudioRemoto();
+      stopButton.classList.remove('visible');
+      roomCode.classList.remove('visible');
+      startButton.disabled = false;
+      joinButton.disabled = false;
+      showCallStatus('error', 'Transmissão encerrada.');
+      setStatus('Transmissão encerrada. Você pode iniciar outra sem atualizar a página.');
     };
     voiceButton.onclick = async () => {
       if (!voiceStream) return ensureVoice();
