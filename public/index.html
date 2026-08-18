@@ -183,9 +183,11 @@
       }
       if (message.type === 'offer') {
         await ensureVoice();
-        const connection = makePeer(); await connection.setRemoteDescription(message.offer);
+        const connection = role === 'host' ? hostPeers.get(message.viewerId) : (peer || makePeer());
+        if (!connection) return;
+        await connection.setRemoteDescription(message.offer);
         if (voiceStream && connection.voiceSender) await connection.voiceSender.replaceTrack(voiceStream.getAudioTracks()[0]);
-        await flushCandidates(connection, 'viewer');
+        await flushCandidates(connection, role === 'host' ? message.viewerId : 'viewer');
         const answer = await connection.createAnswer(); await connection.setLocalDescription(answer); send({ type: 'answer', answer });
       }
       if (message.type === 'answer') {
@@ -228,8 +230,23 @@
       try {
         voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         voiceButton.textContent = 'Microfone ativo';
+        await renegotiateVoice();
         return true;
-      } catch { voiceButton.textContent = 'Microfone indisponível'; return false; }
+      } catch (error) {
+        voiceButton.textContent = 'Microfone indisponível';
+        setStatus(error.name === 'NotAllowedError' ? 'Permita o microfone nas configurações do navegador.' : 'Não foi possível acessar o microfone.');
+        return false;
+      }
+    };
+    const renegotiateVoice = async () => {
+      const connections = role === 'host' ? [...hostPeers.entries()] : peer ? [['viewer', peer]] : [];
+      for (const [target, connection] of connections) {
+        if (connection.signalingState !== 'stable' || !connection.voiceSender) continue;
+        await connection.voiceSender.replaceTrack(voiceStream.getAudioTracks()[0]);
+        const offer = await connection.createOffer();
+        await connection.setLocalDescription(offer);
+        send({ type: 'offer', offer, ...(role === 'host' ? { target } : {}) });
+      }
     };
     stopButton.onclick = () => {
       send({ type: 'end-room' });
