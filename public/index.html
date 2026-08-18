@@ -235,12 +235,6 @@
         remoteVideo.play().catch(() => setStatus('Clique em “Ativar som” para ouvir a transmissão.'));
         setStatus('Transmissão conectada.');
       };
-      const voiceTrack = voiceStream?.getAudioTracks()[0];
-      const audioTransceiver = voiceTrack
-        ? connection.addTransceiver(voiceTrack, { direction: 'sendrecv', streams: [voiceStream] })
-        : connection.addTransceiver('audio', { direction: 'sendrecv' });
-      if (voiceTrack) audioTransceiver.sender.replaceTrack(voiceTrack);
-      connection.voiceSender = audioTransceiver.sender;
        connection.onconnectionstatechange = () => {
          if (connection.connectionState === 'connected') {
            callConnections += 1;
@@ -255,6 +249,25 @@
       if (connectionId) hostPeers.set(connectionId, connection);
       else peer = connection;
       return connection;
+    };
+
+    const attachVoice = async (connection) => {
+      const track = voiceStream?.getAudioTracks()[0];
+      if (!track || !connection) return;
+      const transceiver = connection.voiceSender
+        ? connection.getTransceivers().find((t) => t.sender === connection.voiceSender)
+        : connection.getTransceivers().find((t) => t.receiver.track.kind === 'audio' && t.mid !== null);
+      if (!transceiver) return;
+      await transceiver.sender.replaceTrack(track);
+      if (transceiver.direction !== 'sendrecv') transceiver.direction = 'sendrecv';
+    };
+    const addVoiceLine = (connection) => {
+      if (connection.getTransceivers().some((t) => t.receiver.track.kind === 'audio')) return;
+      const transceiver = connection.addTransceiver(voiceStream?.getAudioTracks()[0] || 'audio', {
+        direction: 'sendrecv',
+        ...(voiceStream ? { streams: [voiceStream] } : {}),
+      });
+      connection.voiceSender = transceiver.sender;
     };
 
     const flushCandidates = async (connection, key) => {
@@ -274,8 +287,9 @@
          showCallStatus('connecting', 'Conectando o áudio do espectador...');
          setStatus(`Espectador ${message.count} conectado. Negociando conexão...`);
         const connection = makePeer(message.viewerId);
+        addVoiceLine(connection);
         localStream.getTracks().forEach((track) => connection.addTrack(track, localStream));
-        if (voiceStream && connection.voiceSender) await connection.voiceSender.replaceTrack(voiceStream.getAudioTracks()[0]);
+        await attachVoice(connection);
         const offer = await connection.createOffer(); await connection.setLocalDescription(offer); send({ type: 'offer', offer, target: message.viewerId });
       }
       if (message.type === 'offer') {
@@ -283,13 +297,13 @@
         const connection = role === 'host' ? hostPeers.get(message.viewerId) : (peer || makePeer());
         if (!connection) return;
         await connection.setRemoteDescription(message.offer);
-        if (voiceStream && connection.voiceSender) await connection.voiceSender.replaceTrack(voiceStream.getAudioTracks()[0]);
+        await attachVoice(connection);
         await flushCandidates(connection, role === 'host' ? message.viewerId : 'viewer');
         const answer = await connection.createAnswer(); await connection.setLocalDescription(answer); send({ type: 'answer', answer, ...(message.viewerId ? { target: message.viewerId } : {}) });
       }
       if (message.type === 'answer') {
-        const connection = hostPeers.get(message.viewerId);
-        if (connection) { await connection.setRemoteDescription(message.answer); await flushCandidates(connection, message.viewerId); }
+        const connection = role === 'host' ? hostPeers.get(message.viewerId) : peer;
+        if (connection) { await connection.setRemoteDescription(message.answer); await flushCandidates(connection, role === 'host' ? message.viewerId : 'viewer'); }
       }
       if (message.type === 'ice-candidate') {
         const key = role === 'host' ? message.viewerId : 'viewer';
@@ -353,8 +367,8 @@
     const renegotiateVoice = async () => {
       const connections = role === 'host' ? [...hostPeers.entries()] : peer ? [['viewer', peer]] : [];
       for (const [target, connection] of connections) {
-        if (connection.signalingState !== 'stable' || !connection.voiceSender) continue;
-        await connection.voiceSender.replaceTrack(voiceStream.getAudioTracks()[0]);
+        if (connection.signalingState !== 'stable') continue;
+        await attachVoice(connection);
         const offer = await connection.createOffer();
         await connection.setLocalDescription(offer);
         send({ type: 'offer', offer, ...(role === 'host' ? { target } : {}) });
