@@ -59,6 +59,31 @@ wss.on('connection', (socket) => {
       return send(room.host, { type: 'viewer-joined', viewerId, count: room.viewers.size });
     }
 
+    if (message.type === 'end-room' && socket.role === 'host' && socket.roomId) {
+      const room = rooms.get(socket.roomId);
+      if (!room) return;
+      for (const viewer of room.viewers.values()) {
+        send(viewer, { type: 'room-ended' });
+        viewer.close();
+      }
+      rooms.delete(socket.roomId);
+      return socket.close();
+    }
+
+    if (message.type === 'chat' && socket.roomId) {
+      const room = rooms.get(socket.roomId);
+      if (!room) return;
+      const chatMessage = {
+        type: 'chat',
+        sender: socket.role === 'host' ? 'Transmissor' : `Espectador ${socket.viewerId.slice(0, 4)}`,
+        text: String(message.text || '').trim().slice(0, 500),
+      };
+      if (!chatMessage.text) return;
+      send(room.host, chatMessage);
+      for (const viewer of room.viewers.values()) send(viewer, chatMessage);
+      return;
+    }
+
     if (socket.roomId && ['offer', 'answer', 'ice-candidate'].includes(message.type)) {
       const room = rooms.get(socket.roomId);
       if (!room) return;
