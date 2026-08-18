@@ -46,6 +46,8 @@
     .video-actions { display: flex; align-items: center; gap: 10px; }
     .fullscreen { width: auto; padding: 3px 8px; border-radius: 6px; color: var(--muted); font-size: 11px; font-weight: 600; }
     .fullscreen:hover { color: var(--text); }
+    .sound { width: auto; padding: 3px 8px; border-radius: 6px; color: var(--muted); font-size: 11px; font-weight: 600; }
+    .sound:hover { color: var(--text); }
     .tag { color: var(--accent); }
     video { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: #08090d; }
     @media (max-width: 820px) { header { margin-bottom: 46px; } .workspace, .videos { grid-template-columns: 1fr; } .panel { order: 2; } }
@@ -67,7 +69,7 @@
       </aside>
       <div class="videos">
         <div class="video-card"><div class="video-head"><span>Minha tela</span><span class="tag">LOCAL</span></div><video id="local-video" autoplay muted playsinline></video></div>
-        <div class="video-card"><div class="video-head"><span>Tela recebida</span><div class="video-actions"><span class="tag">AO VIVO</span><button class="fullscreen" id="fullscreen" type="button">Tela cheia</button></div></div><video id="remote-video" autoplay playsinline></video></div>
+        <div class="video-card"><div class="video-head"><span>Tela recebida</span><div class="video-actions"><span class="tag">AO VIVO</span><button class="sound" id="sound" type="button">Ativar som</button><button class="fullscreen" id="fullscreen" type="button">Tela cheia</button></div></div><video id="remote-video" autoplay controls playsinline></video></div>
       </div>
     </section>
   </main>
@@ -79,6 +81,7 @@
     const localVideo = document.querySelector('#local-video');
     const remoteVideo = document.querySelector('#remote-video');
     const fullscreenButton = document.querySelector('#fullscreen');
+    const soundButton = document.querySelector('#sound');
     const roomCode = document.querySelector('#room-code');
     const roomId = document.querySelector('#room-id');
     const copyButton = document.querySelector('#copy');
@@ -105,7 +108,12 @@
     const makePeer = () => {
       peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
       peer.onicecandidate = ({ candidate }) => candidate && send({ type: 'ice-candidate', candidate });
-      peer.ontrack = ({ streams }) => { remoteVideo.srcObject = streams[0]; setStatus('Transmissão conectada.'); };
+      peer.ontrack = ({ streams }) => {
+        remoteVideo.srcObject = streams[0];
+        remoteVideo.muted = false;
+        remoteVideo.play().catch(() => setStatus('Clique em “Ativar som” para ouvir a transmissão.'));
+        setStatus('Transmissão conectada.');
+      };
       peer.onconnectionstatechange = () => { if (['failed', 'disconnected'].includes(peer.connectionState)) setStatus('Conexão interrompida.'); };
       return peer;
     };
@@ -156,6 +164,12 @@
     };
     fullscreenButton.onclick = toggleFullscreen;
     remoteVideo.ondblclick = toggleFullscreen;
+    soundButton.onclick = async () => {
+      remoteVideo.muted = false;
+      remoteVideo.volume = 1;
+      try { await remoteVideo.play(); soundButton.textContent = 'Som ativado'; }
+      catch { setStatus('O navegador bloqueou o áudio. Clique novamente no vídeo.'); }
+    };
     copyButton.onclick = async () => { await navigator.clipboard.writeText(roomId.textContent); copyButton.textContent = 'Copiado'; setTimeout(() => copyButton.textContent = 'Copiar', 1500); };
   </script>
 </body>
