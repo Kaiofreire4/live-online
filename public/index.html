@@ -43,6 +43,21 @@
     .stop { display: none; margin-top: 10px; color: #ff9b9b; border-color: #573034; background: #281518; }
     .stop.visible { display: block; }
     .voice { margin-top: 10px; }
+    .call-status { display: none; margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #0d1017; }
+    .call-status.visible { display: block; }
+    .call-status-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; font-weight: 800; }
+    .call-status-head span:first-child { display: flex; align-items: center; gap: 7px; }
+    .call-dot { width: 8px; height: 8px; border-radius: 50%; background: #777d8d; }
+    .call-dot.connecting { background: #ffd166; box-shadow: 0 0 10px #ffd166; }
+    .call-dot.connected { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+    .call-dot.error { background: #ff7b7b; box-shadow: 0 0 10px #ff7b7b; }
+    .call-status small { display: block; margin-top: 7px; color: var(--muted); }
+    .mic-state { display: flex; align-items: center; gap: 7px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+    .mic-state::before { content: '●'; color: #777d8d; }
+    .mic-state.active::before { color: var(--accent); }
+    .mic-state.speaking { color: var(--text); }
+    .mic-state.speaking::before { color: var(--accent); text-shadow: 0 0 8px var(--accent); }
+    .mic-state.muted::before { color: #ffd166; }
     .videos { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     .video-card { overflow: hidden; }
     .video-head { display: flex; justify-content: space-between; padding: 15px 17px; color: var(--muted); font-size: 12px; }
@@ -76,8 +91,13 @@
       <aside class="panel">
         <h2>Comece uma sessão</h2><small>Crie uma sala e envie o código para seu amigo.</small>
         <button class="primary" id="start">Iniciar Transmissão</button>
-        <button class="stop" id="stop" type="button">Parar transmissão</button>
-        <button class="voice" id="voice" type="button">Ativar microfone</button>
+         <button class="stop" id="stop" type="button">Parar transmissão</button>
+         <button class="voice" id="voice" type="button">Ativar microfone</button>
+         <div class="call-status" id="call-status" aria-live="polite">
+           <div class="call-status-head"><span><i class="call-dot" id="call-dot"></i>Chamada de voz</span><strong id="call-state">Aguardando</strong></div>
+           <small id="call-detail">A chamada inicia ao conectar uma sala.</small>
+           <div class="mic-state" id="mic-state">Microfone desligado</div>
+         </div>
         <div class="room-code" id="room-code"><label>ID DA SALA</label><div class="code-line"><strong id="room-id">------</strong><button class="copy" id="copy">Copiar</button></div></div>
         <div class="divider">ou entre em uma sala</div>
         <div class="room"><input id="room-input" maxlength="6" placeholder="ID DA SALA" autocomplete="off"><button id="join">Conectar / Assistir</button></div>
@@ -98,6 +118,11 @@
     const startButton = document.querySelector('#start');
     const stopButton = document.querySelector('#stop');
     const voiceButton = document.querySelector('#voice');
+    const callStatus = document.querySelector('#call-status');
+    const callDot = document.querySelector('#call-dot');
+    const callState = document.querySelector('#call-state');
+    const callDetail = document.querySelector('#call-detail');
+    const micState = document.querySelector('#mic-state');
     const joinButton = document.querySelector('#join');
     const roomInput = document.querySelector('#room-input');
     const status = document.querySelector('#status');
@@ -124,8 +149,42 @@
     const hostPeers = new Map();
     const pendingCandidates = new Map();
     let role;
+    let voiceAnalyser;
+    let voiceAnalysisFrame;
+    let callConnections = 0;
 
     const setStatus = (text) => { status.textContent = text; };
+    const showCallStatus = (state, detail) => {
+      callStatus.classList.add('visible');
+      callState.textContent = state === 'connected' ? 'Conectada' : state === 'connecting' ? 'Conectando...' : 'Indisponível';
+      callDetail.textContent = detail;
+      callDot.className = `call-dot ${state}`;
+    };
+    const showMicState = (state, text) => {
+      micState.className = `mic-state ${state}`;
+      micState.textContent = text;
+    };
+    const startVoiceMeter = () => {
+      if (!voiceStream || voiceAnalysisFrame) return;
+      try {
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(voiceStream);
+        voiceAnalyser = audioContext.createAnalyser();
+        voiceAnalyser.fftSize = 512;
+        source.connect(voiceAnalyser);
+        const data = new Uint8Array(voiceAnalyser.fftSize);
+        const measure = () => {
+          if (!voiceStream) return;
+          voiceAnalyser.getByteTimeDomainData(data);
+          const volume = Math.sqrt(data.reduce((sum, value) => sum + ((value - 128) / 128) ** 2, 0) / data.length);
+          if (voiceStream.getAudioTracks()[0]?.enabled) showMicState(volume > 0.045 ? 'active speaking' : 'active', volume > 0.045 ? 'Captando voz · falando agora' : 'Microfone conectado · captando voz');
+          voiceAnalysisFrame = requestAnimationFrame(measure);
+        };
+        measure();
+      } catch {
+        showMicState('active', 'Microfone conectado · captando voz');
+      }
+    };
     const send = (message) => {
       if (socket.readyState !== WebSocket.OPEN) {
         setStatus('Servidor de sinalização indisponível. Aguarde o backend iniciar.');
@@ -156,7 +215,17 @@
       const audioTransceiver = connection.addTransceiver('audio', { direction: 'sendrecv' });
       if (voiceStream) audioTransceiver.sender.replaceTrack(voiceStream.getAudioTracks()[0]);
       connection.voiceSender = audioTransceiver.sender;
-      connection.onconnectionstatechange = () => { if (['failed', 'disconnected'].includes(connection.connectionState)) setStatus('Conexão interrompida.'); };
+       connection.onconnectionstatechange = () => {
+         if (connection.connectionState === 'connected') {
+           callConnections += 1;
+           showCallStatus('connected', 'Áudio conectado com os participantes da sala.');
+         }
+         if (['failed', 'disconnected'].includes(connection.connectionState)) {
+           callConnections = Math.max(0, callConnections - 1);
+           showCallStatus('error', 'A conexão de voz foi interrompida.');
+           setStatus('Conexão interrompida.');
+         }
+       };
       if (connectionId) hostPeers.set(connectionId, connection);
       else peer = connection;
       return connection;
@@ -174,9 +243,10 @@
     socket.onmessage = async ({ data }) => {
       const message = JSON.parse(data);
       if (message.type === 'room-created') { roomId.textContent = message.roomId; roomCode.classList.add('visible'); stopButton.classList.add('visible'); setStatus('Sala criada. Aguardando seu amigo.'); }
-      if (message.type === 'joined-room') { viewerId = message.viewerId; setStatus('Sala encontrada. Conectando...'); await ensureVoice(); }
+       if (message.type === 'joined-room') { viewerId = message.viewerId; showCallStatus('connecting', 'Abrindo chamada de voz...'); setStatus('Sala encontrada. Conectando...'); await ensureVoice(); }
       if (message.type === 'viewer-joined') {
-        setStatus(`Espectador ${message.count} conectado. Negociando conexão...`);
+         showCallStatus('connecting', 'Conectando o áudio do espectador...');
+         setStatus(`Espectador ${message.count} conectado. Negociando conexão...`);
         const connection = makePeer(message.viewerId);
         localStream.getTracks().forEach((track) => connection.addTrack(track, localStream));
         if (voiceStream && connection.voiceSender) await connection.voiceSender.replaceTrack(voiceStream.getAudioTracks()[0]);
@@ -220,7 +290,7 @@
     startButton.onclick = async () => {
       try {
         localStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 60 } }, audio: true });
-        localVideo.srcObject = localStream; role = 'host'; await ensureVoice();
+        localVideo.srcObject = localStream; role = 'host'; showCallStatus('connecting', 'Preparando sua chamada de voz...'); await ensureVoice();
         if (!send({ type: 'create-room' })) return;
         startButton.disabled = true; setStatus('Tela capturada. Criando sala...');
         localStream.getVideoTracks()[0].onended = () => setStatus('Captura encerrada.');
@@ -236,10 +306,15 @@
       try {
         voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         voiceButton.textContent = 'Microfone ativo';
+        showCallStatus('connecting', 'Microfone conectado. Conectando chamada...');
+        showMicState('active', 'Microfone conectado · captando voz');
+        startVoiceMeter();
         await renegotiateVoice();
         return true;
       } catch (error) {
         voiceButton.textContent = 'Microfone indisponível';
+        showCallStatus('error', 'Não foi possível iniciar a chamada de voz.');
+        showMicState('', 'Microfone indisponível');
         setStatus(error.name === 'NotAllowedError' ? 'Permita o microfone nas configurações do navegador.' : 'Não foi possível acessar o microfone.');
         return false;
       }
@@ -263,8 +338,9 @@
     };
     voiceButton.onclick = async () => {
       if (!voiceStream) return ensureVoice();
-      const track = voiceStream.getAudioTracks()[0]; track.enabled = !track.enabled;
-      voiceButton.textContent = track.enabled ? 'Microfone ativo' : 'Microfone silenciado';
+       const track = voiceStream.getAudioTracks()[0]; track.enabled = !track.enabled;
+       voiceButton.textContent = track.enabled ? 'Microfone ativo' : 'Microfone silenciado';
+       showMicState(track.enabled ? 'active' : 'muted', track.enabled ? 'Microfone conectado · captando voz' : 'Microfone silenciado');
     };
     chatForm.onsubmit = (event) => { event.preventDefault(); const text = chatInput.value.trim(); if (!text || !send({ type: 'chat', text })) return; chatInput.value = ''; };
     joinButton.onclick = () => { const id = roomInput.value.trim().toUpperCase(); if (id.length !== 6) return setStatus('Digite um ID de sala com 6 caracteres.'); role = 'viewer'; if (send({ type: 'join-room', roomId: id })) joinButton.disabled = true; };
