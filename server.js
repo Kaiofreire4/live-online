@@ -8,6 +8,14 @@ const publicDir = path.join(__dirname, 'public');
 const port = Number(process.env.PORT) || 3000;
 const maxViewers = 12;
 const rooms = new Map();
+const contentTypes = {
+  '.html': 'text/html; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+};
 
 function send(socket, message) {
   if (socket.readyState === 1) socket.send(JSON.stringify(message));
@@ -26,7 +34,7 @@ const server = http.createServer((request, response) => {
       response.writeHead(error.code === 'ENOENT' ? 404 : 500);
       return response.end('Not found');
     }
-    const contentType = filePath.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/plain';
+    const contentType = contentTypes[path.extname(filePath).toLowerCase()] || 'text/plain';
     response.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
     response.end(data);
   });
