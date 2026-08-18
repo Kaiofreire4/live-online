@@ -152,6 +152,7 @@
     let voiceAnalyser;
     let voiceAnalysisFrame;
     let callConnections = 0;
+    const remoteAudios = new Set();
 
     const setStatus = (text) => { status.textContent = text; };
     const showCallStatus = (state, detail) => {
@@ -185,6 +186,10 @@
         showMicState('active', 'Microfone conectado · captando voz');
       }
     };
+    const liberarAudioRecebido = () => {
+      remoteAudios.forEach((audio) => audio.play().catch(() => {}));
+    };
+    document.addEventListener('click', liberarAudioRecebido);
     const send = (message) => {
       if (socket.readyState !== WebSocket.OPEN) {
         setStatus('Servidor de sinalização indisponível. Aguarde o backend iniciar.');
@@ -197,23 +202,30 @@
       const connection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
       connection.onicecandidate = ({ candidate }) => candidate && send({ type: 'ice-candidate', candidate, ...(connectionId ? { target: connectionId } : {}) });
       connection.ontrack = ({ track, streams }) => {
+        const stream = streams[0] || new MediaStream([track]);
         if (track.kind === 'audio' && role === 'host') {
           const audio = document.createElement('audio');
           audio.autoplay = true;
           audio.controls = true;
-          audio.srcObject = streams[0];
+          audio.srcObject = stream;
           audio.dataset.viewerId = connectionId || '';
           document.body.append(audio);
+          remoteAudios.add(audio);
           audio.play().catch(() => setStatus('Clique em qualquer botão para liberar o áudio recebido.'));
           return;
         }
-        remoteVideo.srcObject = streams[0];
+        const remoteStream = remoteVideo.srcObject || new MediaStream();
+        if (!remoteStream.getTracks().includes(track)) remoteStream.addTrack(track);
+        remoteVideo.srcObject = streams[0] || remoteStream;
         remoteVideo.muted = false;
         remoteVideo.play().catch(() => setStatus('Clique em “Ativar som” para ouvir a transmissão.'));
         setStatus('Transmissão conectada.');
       };
-      const audioTransceiver = connection.addTransceiver('audio', { direction: 'sendrecv' });
-      if (voiceStream) audioTransceiver.sender.replaceTrack(voiceStream.getAudioTracks()[0]);
+      const voiceTrack = voiceStream?.getAudioTracks()[0];
+      const audioTransceiver = voiceTrack
+        ? connection.addTransceiver(voiceTrack, { direction: 'sendrecv', streams: [voiceStream] })
+        : connection.addTransceiver('audio', { direction: 'sendrecv' });
+      if (voiceTrack) audioTransceiver.sender.replaceTrack(voiceTrack);
       connection.voiceSender = audioTransceiver.sender;
        connection.onconnectionstatechange = () => {
          if (connection.connectionState === 'connected') {
