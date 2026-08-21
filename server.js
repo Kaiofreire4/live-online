@@ -99,7 +99,7 @@ wss.on('connection', (socket) => {
     if (socket.roomId && message.type === 'quality-request' && socket.role === 'viewer') {
       const room = rooms.get(socket.roomId);
       if (!room) return;
-      return send(room.host, { type: 'quality-request', quality: ['auto', '360p', '480p', '720p'].includes(message.quality) ? message.quality : '720p', viewerId: socket.viewerId });
+      return send(room.host, { type: 'quality-request', quality: ['auto', '360p', '480p', '720p', '1080p'].includes(message.quality) ? message.quality : '720p', viewerId: socket.viewerId });
     }
 
     if (socket.roomId && ['offer', 'answer', 'ice-candidate'].includes(message.type)) {

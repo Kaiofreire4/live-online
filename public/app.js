@@ -43,6 +43,7 @@ const videoQuality = {
   '360p': { maxBitrate: 1200000, maxFramerate: 30, scaleResolutionDownBy: 2 },
   '480p': { maxBitrate: 2500000, maxFramerate: 30, scaleResolutionDownBy: 1.5 },
   '720p': { maxBitrate: 5500000, maxFramerate: 30, scaleResolutionDownBy: 1 },
+  '1080p': { maxBitrate: 8500000, maxFramerate: 30, scaleResolutionDownBy: 1 },
 };
 let qualityMonitor;
 
@@ -152,10 +153,10 @@ const makePeer = (connectionId = null) => {
     const remoteStream = remoteVideo.srcObject || new MediaStream();
     if (!remoteStream.getTracks().includes(track)) remoteStream.addTrack(track);
     remoteVideo.srcObject = streams[0] || remoteStream;
-    remoteVideo.muted = false;
+    // Start muted so browsers allow the live video to autoplay; audio is opt-in.
+    remoteVideo.muted = true;
     if (role === 'viewer') startQualityMonitor(peer);
-    remoteVideo.play().catch(() => setStatus('Clique em “Ativar som” para ouvir a transmissão.'));
-    setStatus('Transmissão conectada.');
+    remoteVideo.play().then(() => setStatus('Transmissão conectada. Clique em “Ativar som” para ouvir.')).catch(() => setStatus('Clique no vídeo para iniciar a transmissão.'));
   };
   connection.onconnectionstatechange = () => {
     if (connection.connectionState === 'connected') {
@@ -201,7 +202,7 @@ socket.onclose = () => setStatus('Servidor de sinalização desconectado.');
 socket.onmessage = async ({ data }) => {
   const message = JSON.parse(data);
   if (message.type === 'room-created') { roomId.textContent = message.roomId; roomCode.classList.add('visible'); stopButton.classList.add('visible'); setStatus('Sala criada. Aguardando seu amigo.'); }
-  if (message.type === 'joined-room') { viewerId = message.viewerId; showCallStatus('connecting', 'Abrindo chamada de voz...'); setStatus('Sala encontrada. Conectando...'); await ensureVoice(); }
+  if (message.type === 'joined-room') { viewerId = message.viewerId; showCallStatus('connecting', 'Conectando à transmissão...'); setStatus('Sala encontrada. Conectando...'); }
   if (message.type === 'viewer-joined') {
     showCallStatus('connecting', 'Conectando o áudio do espectador...');
     setStatus(`Espectador ${message.count} conectado. Negociando conexão...`);
@@ -213,7 +214,7 @@ socket.onmessage = async ({ data }) => {
     const offer = await connection.createOffer(); await connection.setLocalDescription(offer); send({ type: 'offer', offer, target: message.viewerId });
   }
   if (message.type === 'offer') {
-    await ensureVoice();
+    if (role === 'host') await ensureVoice();
     const connection = role === 'host' ? hostPeers.get(message.viewerId) : (peer || makePeer());
     if (!connection) return;
     await connection.setRemoteDescription(message.offer);
@@ -250,7 +251,7 @@ socket.onmessage = async ({ data }) => {
 
 startButton.onclick = async () => {
   try {
-    localStream = await navigator.mediaDevices.getDisplayMedia({ video: { width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 }, resizeMode: 'none' }, audio: true });
+    localStream = await navigator.mediaDevices.getDisplayMedia({ video: { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 30, max: 30 }, resizeMode: 'none' }, audio: true });
     localStream.getVideoTracks()[0].contentHint = 'detail';
     localVideo.srcObject = localStream; role = 'host'; showCallStatus('connecting', 'Preparando sua chamada de voz...'); await ensureVoice();
     if (!send({ type: 'create-room' })) return;
