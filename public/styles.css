@@ -60,6 +60,7 @@ button:hover { border-color: #667052; transform: translateY(-1px); }
 .fullscreen:hover, .sound:hover, .quality:hover { color: var(--text); }
 .tag { color: var(--accent); }
 video { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: contain; background: #08090d; }
+.stream-metrics { display: block; min-height: 18px; padding: 8px 15px 11px; color: var(--muted); font-size: 11px; }
 .chat { margin-top: 18px; padding: 20px; }
 .chat-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .chat-head h2 { margin: 0; font-size: 16px; }

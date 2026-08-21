@@ -14,6 +14,7 @@ const remoteVideo = document.querySelector('#remote-video');
 const fullscreenButton = document.querySelector('#fullscreen');
 const soundButton = document.querySelector('#sound');
 const qualitySelect = document.querySelector('#quality');
+const streamMetrics = document.querySelector('#stream-metrics');
 const chatForm = document.querySelector('#chat-form');
 const chatInput = document.querySelector('#chat-input');
 const messages = document.querySelector('#messages');
@@ -39,10 +40,11 @@ let callConnections = 0;
 const remoteAudios = new Set();
 const videoQuality = {
   auto: {},
-  '360p': { maxBitrate: 900000, scaleResolutionDownBy: 2 },
-  '480p': { maxBitrate: 1800000, scaleResolutionDownBy: 1.5 },
-  '720p': { maxBitrate: 3500000, scaleResolutionDownBy: 1 },
+  '360p': { maxBitrate: 1200000, maxFramerate: 30, scaleResolutionDownBy: 2 },
+  '480p': { maxBitrate: 2500000, maxFramerate: 30, scaleResolutionDownBy: 1.5 },
+  '720p': { maxBitrate: 5500000, maxFramerate: 30, scaleResolutionDownBy: 1 },
 };
+let qualityMonitor;
 
 const setStatus = (text) => { status.textContent = text; };
 const showCallStatus = (state, detail) => {
@@ -104,15 +106,41 @@ const send = (message) => {
 const applyVideoQuality = async (connection, quality = '720p') => {
   const sender = connection?.getSenders().find((item) => item.track?.kind === 'video');
   if (!sender) return;
+  sender.track.contentHint = 'detail';
   const parameters = sender.getParameters();
   if (!parameters.encodings?.length) parameters.encodings = [{}];
   const encoding = parameters.encodings[0];
   delete encoding.maxBitrate;
+  delete encoding.maxFramerate;
   delete encoding.scaleResolutionDownBy;
   Object.assign(encoding, videoQuality[quality] || videoQuality['720p']);
-  parameters.degradationPreference = quality === '720p' ? 'maintain-resolution' : 'balanced';
+  parameters.degradationPreference = quality === 'auto' ? 'balanced' : 'maintain-resolution';
   try { await sender.setParameters(parameters); }
   catch { setStatus('Não foi possível alterar a qualidade desta transmissão.'); }
+};
+const stopQualityMonitor = () => {
+  if (qualityMonitor) clearInterval(qualityMonitor);
+  qualityMonitor = null;
+  streamMetrics.textContent = 'Qualidade: aguardando transmissão...';
+};
+const startQualityMonitor = (connection) => {
+  stopQualityMonitor();
+  let previous;
+  qualityMonitor = setInterval(async () => {
+    if (!connection || connection.connectionState === 'closed') return stopQualityMonitor();
+    let reports;
+    try { reports = await connection.getStats(); } catch { return; }
+    const inbound = [...reports.values()].find((report) => report.type === 'inbound-rtp' && (report.kind === 'video' || report.mediaType === 'video'));
+    if (!inbound) return;
+    const elapsed = previous ? Math.max(1, (inbound.timestamp - previous.timestamp) / 1000) : 0;
+    const bitrate = previous && elapsed ? Math.round(((inbound.bytesReceived - previous.bytesReceived) * 8) / elapsed / 1000) : 0;
+    const received = (inbound.packetsReceived || 0) + (inbound.packetsLost || 0);
+    const loss = received ? ((inbound.packetsLost || 0) / received) * 100 : 0;
+    const resolution = inbound.frameWidth && inbound.frameHeight ? `${inbound.frameWidth}x${inbound.frameHeight}` : 'calculando';
+    const warning = loss >= 2 ? ` · perda ${loss.toFixed(1)}%` : '';
+    streamMetrics.textContent = `Qualidade: ${qualitySelect.value === 'auto' ? 'Auto' : qualitySelect.value} · ${resolution} · ${bitrate || '...'} kbps${warning}`;
+    previous = inbound;
+  }, 2000);
 };
 const makePeer = (connectionId = null) => {
   const connection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
@@ -125,6 +153,7 @@ const makePeer = (connectionId = null) => {
     if (!remoteStream.getTracks().includes(track)) remoteStream.addTrack(track);
     remoteVideo.srcObject = streams[0] || remoteStream;
     remoteVideo.muted = false;
+    if (role === 'viewer') startQualityMonitor(peer);
     remoteVideo.play().catch(() => setStatus('Clique em “Ativar som” para ouvir a transmissão.'));
     setStatus('Transmissão conectada.');
   };
@@ -204,10 +233,10 @@ socket.onmessage = async ({ data }) => {
   }
   if (message.type === 'peer-left') {
     if (role === 'host') { hostPeers.get(message.viewerId)?.close(); hostPeers.delete(message.viewerId); removerAudioRemoto(message.viewerId); setStatus('Um espectador saiu da sala.'); }
-    else { remoteVideo.srcObject = null; removerAudioRemoto(); setStatus('O transmissor saiu da sala.'); }
+    else { stopQualityMonitor(); remoteVideo.srcObject = null; removerAudioRemoto(); setStatus('O transmissor saiu da sala.'); }
   }
   if (message.type === 'room-ended') {
-    remoteVideo.srcObject = null; peer?.close(); peer = null; role = null; viewerId = null; joinButton.disabled = false; removerAudioRemoto(); showCallStatus('error', 'A transmissão foi encerrada.'); setStatus('A transmissão foi encerrada. Você pode entrar em outra sala.');
+    stopQualityMonitor(); remoteVideo.srcObject = null; peer?.close(); peer = null; role = null; viewerId = null; joinButton.disabled = false; removerAudioRemoto(); showCallStatus('error', 'A transmissão foi encerrada.'); setStatus('A transmissão foi encerrada. Você pode entrar em outra sala.');
   }
   if (message.type === 'quality-request' && role === 'host') { await applyVideoQuality(hostPeers.get(message.viewerId), message.quality); return; }
   if (message.type === 'chat') {
@@ -221,7 +250,8 @@ socket.onmessage = async ({ data }) => {
 
 startButton.onclick = async () => {
   try {
-    localStream = await navigator.mediaDevices.getDisplayMedia({ video: { width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: true });
+    localStream = await navigator.mediaDevices.getDisplayMedia({ video: { width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 }, resizeMode: 'none' }, audio: true });
+    localStream.getVideoTracks()[0].contentHint = 'detail';
     localVideo.srcObject = localStream; role = 'host'; showCallStatus('connecting', 'Preparando sua chamada de voz...'); await ensureVoice();
     if (!send({ type: 'create-room' })) return;
     startButton.disabled = true; setStatus('Tela capturada. Criando sala...');
@@ -247,7 +277,7 @@ const renegotiateVoice = async () => {
   }
 };
 stopButton.onclick = () => {
-  send({ type: 'end-room' }); localStream?.getTracks().forEach((track) => track.stop()); voiceStream?.getTracks().forEach((track) => track.stop()); hostPeers.forEach((connection) => connection.close()); hostPeers.clear(); peer?.close(); peer = null; localStream = null; voiceStream = null; role = null; viewerId = null; localVideo.srcObject = null; remoteVideo.srcObject = null; removerAudioRemoto(); stopButton.classList.remove('visible'); roomCode.classList.remove('visible'); startButton.disabled = false; joinButton.disabled = false; showCallStatus('error', 'Transmissão encerrada.'); setStatus('Transmissão encerrada. Você pode iniciar outra sem atualizar a página.');
+  send({ type: 'end-room' }); stopQualityMonitor(); localStream?.getTracks().forEach((track) => track.stop()); voiceStream?.getTracks().forEach((track) => track.stop()); hostPeers.forEach((connection) => connection.close()); hostPeers.clear(); peer?.close(); peer = null; localStream = null; voiceStream = null; role = null; viewerId = null; localVideo.srcObject = null; remoteVideo.srcObject = null; removerAudioRemoto(); stopButton.classList.remove('visible'); roomCode.classList.remove('visible'); startButton.disabled = false; joinButton.disabled = false; showCallStatus('error', 'Transmissão encerrada.'); setStatus('Transmissão encerrada. Você pode iniciar outra sem atualizar a página.');
 };
 voiceButton.onclick = async () => {
   if (!voiceStream) return ensureVoice();
