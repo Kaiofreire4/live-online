@@ -36,6 +36,7 @@ let voiceStream;
 let viewerId;
 const hostPeers = new Map();
 const pendingCandidates = new Map();
+const participantAudioTracks = new Map();
 let role;
 let voiceAnalyser;
 let voiceAnalysisFrame;
@@ -122,6 +123,37 @@ const setScreenAudio = (enabled) => {
     ? 'O som capturado será enviado aos espectadores.'
     : 'O som da tela não será enviado aos espectadores.';
 };
+const negotiateHostPeer = async (connection, target) => {
+  if (!connection || connection.signalingState !== 'stable') return;
+  try {
+    const offer = await connection.createOffer();
+    await connection.setLocalDescription(offer);
+    send({ type: 'offer', offer, target });
+  } catch { setStatus('Não foi possível atualizar o áudio dos participantes.'); }
+};
+const relayParticipantAudio = (track, stream, sourceId) => {
+  if (role !== 'host' || !sourceId || participantAudioTracks.has(sourceId)) return;
+  participantAudioTracks.set(sourceId, { track, stream });
+  track.addEventListener('ended', () => {
+    participantAudioTracks.delete(sourceId);
+    hostPeers.forEach((connection, target) => {
+      const sender = connection.getSenders().find((item) => item.track === track);
+      if (sender) connection.removeTrack(sender);
+      negotiateHostPeer(connection, target);
+    });
+  });
+  hostPeers.forEach((connection, target) => {
+    if (target === sourceId || connection.getSenders().some((sender) => sender.track === track)) return;
+    connection.addTrack(track, stream);
+    negotiateHostPeer(connection, target);
+  });
+};
+const addRelayedAudio = (connection, sourceId) => {
+  participantAudioTracks.forEach(({ track, stream }, participantId) => {
+    if (participantId === sourceId || connection.getSenders().some((sender) => sender.track === track)) return;
+    connection.addTrack(track, stream);
+  });
+};
 const applyVideoQuality = async (connection, quality = '720p') => {
   const sender = connection?.getSenders().find((item) => item.track?.kind === 'video');
   if (!sender) return;
@@ -166,7 +198,11 @@ const makePeer = (connectionId = null) => {
   connection.onicecandidate = ({ candidate }) => candidate && send({ type: 'ice-candidate', candidate, ...(connectionId ? { target: connectionId } : {}) });
   connection.ontrack = ({ track, streams = [] }) => {
     const stream = streams[0] || new MediaStream([track]);
-    if (track.kind === 'audio' && !stream.getVideoTracks().length) return criarAudioRemoto(track, stream, connectionId);
+    if (track.kind === 'audio' && !stream.getVideoTracks().length) {
+      criarAudioRemoto(track, stream, connectionId);
+      relayParticipantAudio(track, stream, connectionId);
+      return;
+    }
     if (track.kind === 'audio') return;
     const remoteStream = remoteVideo.srcObject || new MediaStream();
     if (!remoteStream.getTracks().includes(track)) remoteStream.addTrack(track);
@@ -220,12 +256,13 @@ socket.onclose = () => setStatus('Servidor de sinalização desconectado.');
 socket.onmessage = async ({ data }) => {
   const message = JSON.parse(data);
   if (message.type === 'room-created') { roomId.textContent = message.roomId; roomCode.classList.add('visible'); stopButton.classList.add('visible'); setStatus('Sala criada. Aguardando seu amigo.'); }
-  if (message.type === 'joined-room') { viewerId = message.viewerId; showCallStatus('connecting', 'Conectando à transmissão...'); setStatus('Sala encontrada. Conectando...'); }
+  if (message.type === 'joined-room') { viewerId = message.viewerId; showCallStatus('connecting', 'Conectando à transmissão...'); setStatus('Sala encontrada. Conectando...'); await ensureVoice(); }
   if (message.type === 'viewer-joined') {
     showCallStatus('connecting', 'Conectando o áudio do espectador...');
     setStatus(`Espectador ${message.count} conectado. Negociando conexão...`);
     const connection = makePeer(message.viewerId);
     addVoiceLine(connection);
+    addRelayedAudio(connection, message.viewerId);
     localStream.getTracks().forEach((track) => connection.addTrack(track, localStream));
     await applyVideoQuality(connection, '720p');
     await attachVoice(connection);
@@ -251,7 +288,7 @@ socket.onmessage = async ({ data }) => {
     else { try { await connection.addIceCandidate(message.candidate); } catch { setStatus('Não foi possível concluir a conexão de voz.'); } }
   }
   if (message.type === 'peer-left') {
-    if (role === 'host') { hostPeers.get(message.viewerId)?.close(); hostPeers.delete(message.viewerId); removerAudioRemoto(message.viewerId); setStatus('Um espectador saiu da sala.'); }
+    if (role === 'host') { participantAudioTracks.delete(message.viewerId); hostPeers.get(message.viewerId)?.close(); hostPeers.delete(message.viewerId); removerAudioRemoto(message.viewerId); setStatus('Um espectador saiu da sala.'); }
     else { stopQualityMonitor(); remoteVideo.srcObject = null; removerAudioRemoto(); setStatus('O transmissor saiu da sala.'); }
   }
   if (message.type === 'room-ended') {
@@ -296,7 +333,7 @@ const renegotiateVoice = async () => {
   }
 };
 stopButton.onclick = () => {
-  send({ type: 'end-room' }); stopQualityMonitor(); localStream?.getTracks().forEach((track) => track.stop()); voiceStream?.getTracks().forEach((track) => track.stop()); hostPeers.forEach((connection) => connection.close()); hostPeers.clear(); peer?.close(); peer = null; localStream = null; voiceStream = null; role = null; viewerId = null; localVideo.srcObject = null; remoteVideo.srcObject = null; removerAudioRemoto(); stopButton.classList.remove('visible'); roomCode.classList.remove('visible'); startButton.disabled = false; joinButton.disabled = false; showCallStatus('error', 'Transmissão encerrada.'); setStatus('Transmissão encerrada. Você pode iniciar outra sem atualizar a página.');
+  send({ type: 'end-room' }); stopQualityMonitor(); localStream?.getTracks().forEach((track) => track.stop()); voiceStream?.getTracks().forEach((track) => track.stop()); hostPeers.forEach((connection) => connection.close()); hostPeers.clear(); participantAudioTracks.clear(); peer?.close(); peer = null; localStream = null; voiceStream = null; role = null; viewerId = null; localVideo.srcObject = null; remoteVideo.srcObject = null; removerAudioRemoto(); stopButton.classList.remove('visible'); roomCode.classList.remove('visible'); startButton.disabled = false; joinButton.disabled = false; showCallStatus('error', 'Transmissão encerrada.'); setStatus('Transmissão encerrada. Você pode iniciar outra sem atualizar a página.');
 };
 voiceButton.onclick = async () => {
   if (!voiceStream) return ensureVoice();
