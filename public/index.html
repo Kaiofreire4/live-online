@@ -18,6 +18,12 @@
         <button class="primary" id="start">Iniciar Transmissão</button>
         <button class="stop" id="stop" type="button">Parar transmissão</button>
         <button class="voice" id="voice" type="button">Ativar microfone</button>
+        <div class="audio-controls" id="audio-controls">
+          <div class="audio-control-row"><span>Áudio da tela</span><button class="audio-toggle" id="screen-audio" type="button">Ativo</button></div>
+          <small id="screen-audio-detail">O som capturado será enviado aos espectadores.</small>
+          <label class="volume-control" for="remote-volume">Volume recebido <input id="remote-volume" type="range" min="0" max="1" step="0.05" value="1"></label>
+        </div>
+        <p class="audio-note">Para separar Discord, jogo e outros aplicativos, use um mixer virtual do sistema. O navegador recebe o áudio compartilhado como uma única faixa.</p>
         <div class="call-status" id="call-status" aria-live="polite">
           <div class="call-status-head"><span><i class="call-dot" id="call-dot"></i>Chamada de voz</span><strong id="call-state">Aguardando</strong></div>
           <small id="call-detail">A chamada inicia ao conectar uma sala.</small>

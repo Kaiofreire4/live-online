@@ -36,6 +36,14 @@ button:hover { border-color: #667052; transform: translateY(-1px); }
 .stop { display: none; margin-top: 10px; color: #ff9b9b; border-color: #573034; background: #281518; }
 .stop.visible { display: block; }
 .voice { margin-top: 10px; }
+.audio-controls { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #0d1017; }
+.audio-control-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; font-weight: 700; }
+.audio-control-row button { width: auto; padding: 4px 9px; color: var(--accent); font-size: 11px; }
+.audio-control-row button.muted { color: #ffd166; }
+.audio-controls small { margin: 7px 0 10px; font-size: 11px; }
+.volume-control { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.volume-control input { min-width: 0; padding: 0; accent-color: var(--accent); }
+.audio-note { margin: 10px 0 0; color: #777d8d; font-size: 11px; line-height: 1.4; }
 .call-status { display: none; margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #0d1017; }
 .call-status.visible { display: block; }
 .call-status-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; font-weight: 800; }

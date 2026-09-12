@@ -1,6 +1,9 @@
 const startButton = document.querySelector('#start');
 const stopButton = document.querySelector('#stop');
 const voiceButton = document.querySelector('#voice');
+const screenAudioButton = document.querySelector('#screen-audio');
+const screenAudioDetail = document.querySelector('#screen-audio-detail');
+const remoteVolume = document.querySelector('#remote-volume');
 const callStatus = document.querySelector('#call-status');
 const callDot = document.querySelector('#call-dot');
 const callState = document.querySelector('#call-state');
@@ -38,6 +41,7 @@ let voiceAnalyser;
 let voiceAnalysisFrame;
 let callConnections = 0;
 const remoteAudios = new Set();
+let screenAudioEnabled = true;
 const videoQuality = {
   auto: {},
   '360p': { maxBitrate: 1200000, maxFramerate: 30, scaleResolutionDownBy: 2 },
@@ -81,13 +85,18 @@ const criarAudioRemoto = (track, stream, connectionId) => {
   audio.autoplay = true;
   audio.controls = true;
   audio.playsInline = true;
-  audio.srcObject = stream || new MediaStream([track]);
+  audio.srcObject = new MediaStream([track]);
+  audio.volume = Number(remoteVolume.value);
   audio.dataset.viewerId = connectionId || '';
   audio.dataset.remoteVoice = 'true';
   document.body.append(audio);
   remoteAudios.add(audio);
   audio.addEventListener('playing', () => setStatus('Voz recebida. Chamada de voz conectada.'));
   audio.play().catch(() => setStatus('Voz recebida. Clique em qualquer botão para ouvir.'));
+  track.addEventListener('ended', () => {
+    remoteAudios.delete(audio);
+    audio.remove();
+  });
 };
 const removerAudioRemoto = (connectionId = null) => {
   remoteAudios.forEach((audio) => {
@@ -103,6 +112,15 @@ const send = (message) => {
   }
   socket.send(JSON.stringify(message));
   return true;
+};
+const setScreenAudio = (enabled) => {
+  screenAudioEnabled = enabled;
+  (localStream?.getAudioTracks() || []).forEach((track) => { track.enabled = enabled; });
+  screenAudioButton.textContent = enabled ? 'Ativo' : 'Silenciado';
+  screenAudioButton.classList.toggle('muted', !enabled);
+  screenAudioDetail.textContent = enabled
+    ? 'O som capturado será enviado aos espectadores.'
+    : 'O som da tela não será enviado aos espectadores.';
 };
 const applyVideoQuality = async (connection, quality = '720p') => {
   const sender = connection?.getSenders().find((item) => item.track?.kind === 'video');
@@ -253,7 +271,7 @@ startButton.onclick = async () => {
   try {
     localStream = await navigator.mediaDevices.getDisplayMedia({ video: { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 30, max: 30 }, resizeMode: 'none' }, audio: true });
     localStream.getVideoTracks()[0].contentHint = 'detail';
-    localVideo.srcObject = localStream; role = 'host'; showCallStatus('connecting', 'Preparando sua chamada de voz...'); await ensureVoice();
+    localVideo.srcObject = localStream; role = 'host'; setScreenAudio(localStream.getAudioTracks().length > 0); showCallStatus('connecting', 'Preparando sua chamada de voz...'); await ensureVoice();
     if (!send({ type: 'create-room' })) return;
     startButton.disabled = true; setStatus('Tela capturada. Criando sala...');
     localStream.getVideoTracks()[0].onended = () => setStatus('Captura encerrada.');
@@ -284,11 +302,17 @@ voiceButton.onclick = async () => {
   if (!voiceStream) return ensureVoice();
   const track = voiceStream.getAudioTracks()[0]; track.enabled = !track.enabled; voiceButton.textContent = track.enabled ? 'Microfone ativo' : 'Microfone silenciado'; showMicState(track.enabled ? 'active' : 'muted', track.enabled ? 'Microfone conectado · captando voz' : 'Microfone silenciado');
 };
+screenAudioButton.onclick = () => setScreenAudio(!screenAudioEnabled);
+remoteVolume.oninput = () => {
+  const volume = Number(remoteVolume.value);
+  remoteVideo.volume = volume;
+  remoteAudios.forEach((audio) => { audio.volume = volume; });
+};
 chatForm.onsubmit = (event) => { event.preventDefault(); const text = chatInput.value.trim(); if (!text || !send({ type: 'chat', text })) return; chatInput.value = ''; };
 joinButton.onclick = () => { const id = roomInput.value.trim().toUpperCase(); if (id.length !== 6) return setStatus('Digite um ID de sala com 6 caracteres.'); role = 'viewer'; if (send({ type: 'join-room', roomId: id })) joinButton.disabled = true; };
 qualitySelect.onchange = () => { if (role !== 'viewer') return; send({ type: 'quality-request', quality: qualitySelect.value }); setStatus(qualitySelect.value === 'auto' ? 'Qualidade automática ativada.' : `Qualidade solicitada: ${qualitySelect.value}.`); };
 const toggleFullscreen = async () => { if (document.fullscreenElement) return document.exitFullscreen(); if (remoteVideo.requestFullscreen) return remoteVideo.requestFullscreen(); if (remoteVideo.webkitEnterFullscreen) remoteVideo.webkitEnterFullscreen(); };
 fullscreenButton.onclick = toggleFullscreen;
 remoteVideo.ondblclick = toggleFullscreen;
-soundButton.onclick = async () => { remoteVideo.muted = false; remoteVideo.volume = 1; try { await remoteVideo.play(); soundButton.textContent = 'Som ativado'; } catch { setStatus('O navegador bloqueou o áudio. Clique novamente no vídeo.'); } };
+soundButton.onclick = async () => { remoteVideo.muted = false; remoteVideo.volume = Number(remoteVolume.value); try { await remoteVideo.play(); soundButton.textContent = 'Som ativado'; } catch { setStatus('O navegador bloqueou o áudio. Clique novamente no vídeo.'); } };
 copyButton.onclick = async () => { await navigator.clipboard.writeText(roomId.textContent); copyButton.textContent = 'Copiado'; setTimeout(() => copyButton.textContent = 'Copiar', 1500); };
