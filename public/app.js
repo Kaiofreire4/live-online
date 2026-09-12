@@ -4,6 +4,9 @@ const voiceButton = document.querySelector('#voice');
 const screenAudioButton = document.querySelector('#screen-audio');
 const screenAudioDetail = document.querySelector('#screen-audio-detail');
 const remoteVolume = document.querySelector('#remote-volume');
+const participantAudioList = document.querySelector('#participant-audio-list');
+const audioEmpty = document.querySelector('#audio-empty');
+const audioCount = document.querySelector('#audio-count');
 const callStatus = document.querySelector('#call-status');
 const callDot = document.querySelector('#call-dot');
 const callState = document.querySelector('#call-state');
@@ -42,6 +45,7 @@ let voiceAnalyser;
 let voiceAnalysisFrame;
 let callConnections = 0;
 const remoteAudios = new Set();
+let remoteAudioNumber = 0;
 let screenAudioEnabled = true;
 const videoQuality = {
   auto: {},
@@ -81,10 +85,52 @@ const startVoiceMeter = () => {
 };
 const liberarAudioRecebido = () => { remoteAudios.forEach((audio) => audio.play().catch(() => {})); };
 document.addEventListener('click', liberarAudioRecebido);
+const updateAudioList = () => {
+  const count = remoteAudios.size;
+  audioEmpty.hidden = count > 0;
+  audioCount.textContent = count ? `${count} ${count === 1 ? 'pessoa conectada' : 'pessoas conectadas'}` : 'Nenhuma pessoa conectada';
+};
+const removeAudioControl = (audio) => {
+  audio.audioControl?.remove();
+  updateAudioList();
+};
+const addAudioControl = (audio, label) => {
+  const row = document.createElement('div');
+  row.className = 'participant-audio-row';
+  const info = document.createElement('div');
+  info.className = 'participant-audio-info';
+  const name = document.createElement('strong');
+  name.textContent = label;
+  const state = document.createElement('small');
+  state.textContent = 'Áudio ativo';
+  info.append(name, state);
+  const mute = document.createElement('button');
+  mute.type = 'button';
+  mute.className = 'audio-mute';
+  mute.textContent = 'Silenciar';
+  mute.onclick = () => {
+    audio.muted = !audio.muted;
+    mute.textContent = audio.muted ? 'Ativar' : 'Silenciar';
+    state.textContent = audio.muted ? 'Silenciado' : 'Áudio ativo';
+    mute.classList.toggle('is-muted', audio.muted);
+  };
+  const volume = document.createElement('input');
+  volume.type = 'range';
+  volume.min = '0';
+  volume.max = '1';
+  volume.step = '0.05';
+  volume.value = String(audio.volume);
+  volume.className = 'participant-volume';
+  volume.setAttribute('aria-label', `Volume de ${label}`);
+  volume.oninput = () => { audio.volume = Number(volume.value); };
+  row.append(info, mute, volume);
+  participantAudioList.append(row);
+  audio.audioControl = row;
+  updateAudioList();
+};
 const criarAudioRemoto = (track, stream, connectionId) => {
   const audio = document.createElement('audio');
   audio.autoplay = true;
-  audio.controls = true;
   audio.playsInline = true;
   audio.srcObject = new MediaStream([track]);
   audio.volume = Number(remoteVolume.value);
@@ -92,19 +138,25 @@ const criarAudioRemoto = (track, stream, connectionId) => {
   audio.dataset.remoteVoice = 'true';
   document.body.append(audio);
   remoteAudios.add(audio);
+  const label = connectionId ? `Espectador ${connectionId.slice(0, 4)}` : role === 'viewer' ? 'Transmissor' : `Participante ${++remoteAudioNumber}`;
+  addAudioControl(audio, label);
   audio.addEventListener('playing', () => setStatus('Voz recebida. Chamada de voz conectada.'));
   audio.play().catch(() => setStatus('Voz recebida. Clique em qualquer botão para ouvir.'));
   track.addEventListener('ended', () => {
     remoteAudios.delete(audio);
+    removeAudioControl(audio);
     audio.remove();
+    updateAudioList();
   });
 };
 const removerAudioRemoto = (connectionId = null) => {
   remoteAudios.forEach((audio) => {
     if (connectionId !== null && audio.dataset.viewerId !== connectionId) return;
     audio.remove();
+    removeAudioControl(audio);
     remoteAudios.delete(audio);
   });
+  updateAudioList();
 };
 const send = (message) => {
   if (socket.readyState !== WebSocket.OPEN) {

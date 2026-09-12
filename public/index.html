@@ -22,6 +22,10 @@
           <div class="audio-control-row"><span>Áudio da tela</span><button class="audio-toggle" id="screen-audio" type="button">Ativo</button></div>
           <small id="screen-audio-detail">O som capturado será enviado aos espectadores.</small>
           <label class="volume-control" for="remote-volume">Volume recebido <input id="remote-volume" type="range" min="0" max="1" step="0.05" value="1"></label>
+          <div class="participant-audio" id="participant-audio">
+            <div class="participant-audio-head"><span>Voz dos participantes</span><small id="audio-count">Nenhuma pessoa conectada</small></div>
+            <div class="participant-audio-list" id="participant-audio-list"><div class="audio-empty" id="audio-empty">As vozes aparecerão aqui.</div></div>
+          </div>
         </div>
         <p class="audio-note">Para separar Discord, jogo e outros aplicativos, use um mixer virtual do sistema. O navegador recebe o áudio compartilhado como uma única faixa.</p>
         <div class="call-status" id="call-status" aria-live="polite">
