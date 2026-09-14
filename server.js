@@ -59,12 +59,14 @@ wss.on('connection', (socket) => {
       if (!room) return send(socket, { type: 'error', message: 'Sala não encontrada.' });
       if (room.viewers.size >= maxViewers) return send(socket, { type: 'error', message: 'Essa sala já atingiu o limite de espectadores.' });
       const viewerId = crypto.randomBytes(4).toString('hex');
+      const displayName = String(message.name || '').trim().slice(0, 30) || `Espectador ${viewerId.slice(0, 4)}`;
       room.viewers.set(viewerId, socket);
       socket.roomId = String(message.roomId).toUpperCase();
       socket.role = 'viewer';
       socket.viewerId = viewerId;
+      socket.displayName = displayName;
       send(socket, { type: 'joined-room', roomId: socket.roomId, viewerId });
-      return send(room.host, { type: 'viewer-joined', viewerId, count: room.viewers.size });
+      return send(room.host, { type: 'viewer-joined', viewerId, name: displayName, count: room.viewers.size });
     }
 
     if (message.type === 'end-room' && socket.role === 'host' && socket.roomId) {
@@ -87,7 +89,7 @@ wss.on('connection', (socket) => {
       if (!room) return;
       const chatMessage = {
         type: 'chat',
-        sender: socket.role === 'host' ? 'Transmissor' : `Espectador ${socket.viewerId.slice(0, 4)}`,
+        sender: socket.role === 'host' ? 'Transmissor' : (socket.displayName || `Espectador ${socket.viewerId.slice(0, 4)}`),
         text: String(message.text || '').trim().slice(0, 500),
       };
       if (!chatMessage.text) return;

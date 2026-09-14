@@ -13,6 +13,7 @@ const callState = document.querySelector('#call-state');
 const callDetail = document.querySelector('#call-detail');
 const micState = document.querySelector('#mic-state');
 const joinButton = document.querySelector('#join');
+const nameInput = document.querySelector('#name-input');
 const roomInput = document.querySelector('#room-input');
 const status = document.querySelector('#status');
 const localVideo = document.querySelector('#local-video');
@@ -40,6 +41,7 @@ let viewerId;
 const hostPeers = new Map();
 const pendingCandidates = new Map();
 const participantAudioTracks = new Map();
+const viewerNames = new Map();
 let role;
 let voiceAnalyser;
 let voiceAnalysisFrame;
@@ -138,7 +140,7 @@ const criarAudioRemoto = (track, stream, connectionId) => {
   audio.dataset.remoteVoice = 'true';
   document.body.append(audio);
   remoteAudios.add(audio);
-  const label = connectionId ? `Espectador ${connectionId.slice(0, 4)}` : role === 'viewer' ? 'Transmissor' : `Participante ${++remoteAudioNumber}`;
+  const label = connectionId ? (viewerNames.get(connectionId) || `Espectador ${connectionId.slice(0, 4)}`) : role === 'viewer' ? 'Transmissor' : `Participante ${++remoteAudioNumber}`;
   addAudioControl(audio, label);
   audio.addEventListener('playing', () => setStatus('Voz recebida. Chamada de voz conectada.'));
   audio.play().catch(() => setStatus('Voz recebida. Clique em qualquer botão para ouvir.'));
@@ -310,6 +312,7 @@ socket.onmessage = async ({ data }) => {
   if (message.type === 'room-created') { roomId.textContent = message.roomId; roomCode.classList.add('visible'); stopButton.classList.add('visible'); setStatus('Sala criada. Aguardando seu amigo.'); }
   if (message.type === 'joined-room') { viewerId = message.viewerId; showCallStatus('connecting', 'Conectando à transmissão...'); setStatus('Sala encontrada. Conectando...'); await ensureVoice(); }
   if (message.type === 'viewer-joined') {
+    viewerNames.set(message.viewerId, message.name || `Espectador ${message.viewerId.slice(0, 4)}`);
     showCallStatus('connecting', 'Conectando o áudio do espectador...');
     setStatus(`Espectador ${message.count} conectado. Negociando conexão...`);
     const connection = makePeer(message.viewerId);
@@ -340,7 +343,7 @@ socket.onmessage = async ({ data }) => {
     else { try { await connection.addIceCandidate(message.candidate); } catch { setStatus('Não foi possível concluir a conexão de voz.'); } }
   }
   if (message.type === 'peer-left') {
-    if (role === 'host') { participantAudioTracks.delete(message.viewerId); hostPeers.get(message.viewerId)?.close(); hostPeers.delete(message.viewerId); removerAudioRemoto(message.viewerId); setStatus('Um espectador saiu da sala.'); }
+    if (role === 'host') { participantAudioTracks.delete(message.viewerId); viewerNames.delete(message.viewerId); hostPeers.get(message.viewerId)?.close(); hostPeers.delete(message.viewerId); removerAudioRemoto(message.viewerId); setStatus('Um espectador saiu da sala.'); }
     else { stopQualityMonitor(); remoteVideo.srcObject = null; removerAudioRemoto(); setStatus('O transmissor saiu da sala.'); }
   }
   if (message.type === 'room-ended') {
@@ -398,7 +401,7 @@ remoteVolume.oninput = () => {
   remoteAudios.forEach((audio) => { audio.volume = volume; });
 };
 chatForm.onsubmit = (event) => { event.preventDefault(); const text = chatInput.value.trim(); if (!text || !send({ type: 'chat', text })) return; chatInput.value = ''; };
-joinButton.onclick = () => { const id = roomInput.value.trim().toUpperCase(); if (id.length !== 6) return setStatus('Digite um ID de sala com 6 caracteres.'); role = 'viewer'; if (send({ type: 'join-room', roomId: id })) joinButton.disabled = true; };
+joinButton.onclick = () => { const id = roomInput.value.trim().toUpperCase(); const name = nameInput.value.trim().slice(0, 30); if (id.length !== 6) return setStatus('Digite um ID de sala com 6 caracteres.'); role = 'viewer'; if (send({ type: 'join-room', roomId: id, name })) joinButton.disabled = true; };
 qualitySelect.onchange = () => { if (role !== 'viewer') return; send({ type: 'quality-request', quality: qualitySelect.value }); setStatus(qualitySelect.value === 'auto' ? 'Qualidade automática ativada.' : `Qualidade solicitada: ${qualitySelect.value}.`); };
 const toggleFullscreen = async () => { if (document.fullscreenElement) return document.exitFullscreen(); if (remoteVideo.requestFullscreen) return remoteVideo.requestFullscreen(); if (remoteVideo.webkitEnterFullscreen) remoteVideo.webkitEnterFullscreen(); };
 fullscreenButton.onclick = toggleFullscreen;

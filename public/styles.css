@@ -24,6 +24,7 @@ button:hover { border-color: #667052; transform: translateY(-1px); }
 .divider { display: flex; align-items: center; gap: 10px; margin: 20px 0; color: #555b6d; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; }
 .divider:before, .divider:after { content: ''; height: 1px; flex: 1; background: var(--line); }
 .room { display: flex; gap: 8px; margin-top: 10px; }
+.room + .status { margin-top: 18px; }
 .room input { min-width: 0; text-transform: uppercase; }
 .room button { width: auto; white-space: nowrap; }
 .room-code { display: none; margin-top: 18px; padding: 14px; border-radius: 10px; background: var(--accent-dark); }
