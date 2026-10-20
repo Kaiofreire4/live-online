@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pideias Telas | Suporte ao vivo</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <meta name="theme-color" content="#0b1110">
+  <meta name="theme-color" content="#0b0d14">
   <meta name="description" content="Compartilhe sua tela e converse com o suporte em tempo real.">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -16,10 +16,44 @@
       <div class="network connecting" id="network-status" aria-live="polite"><i></i><span>Conectando ao servidor</span></div>
     </header>
     <section class="hero">
-      <div class="eyebrow"><span></span> Atendimento remoto, sem complicação</div>
-      <h1>Ajuda humana,<br><em>na hora certa.</em></h1>
-      <p>Compartilhe sua tela e converse com alguém do suporte em uma sessão privada. Você escolhe o que compartilhar e pode encerrar quando quiser.</p>
-      <div class="hero-points" aria-label="Recursos"><span><i>✓</i> Compartilhamento P2P</span><span><i>✓</i> Voz e chat integrados</span><span><i>✓</i> Você mantém o controle</span></div>
+      <div class="hero-copy">
+        <div class="eyebrow"><span></span> Atendimento remoto, sem complicação</div>
+        <h1>Ajuda humana,<br><em>na hora certa.</em></h1>
+        <p>Compartilhe sua tela e converse com alguém do suporte em uma sessão privada. Você escolhe o que compartilhar e pode encerrar quando quiser.</p>
+        <div class="hero-points" aria-label="Recursos"><span><i>✓</i> Compartilhamento P2P</span><span><i>✓</i> Voz e chat integrados</span><span><i>✓</i> Você mantém o controle</span></div>
+      </div>
+      <div class="demo-animation" role="img" aria-label="Demonstração ilustrativa: uma pessoa compartilha sua tela e o outro computador a recebe.">
+        <div class="demo-heading"><span>COMO FUNCIONA</span><small>DEMONSTRAÇÃO ILUSTRATIVA</small></div>
+        <div class="demo-scene" aria-hidden="true">
+          <div class="demo-device demo-source">
+            <div class="device-label"><span class="device-dot"></span> SEU COMPUTADOR</div>
+            <div class="mock-desktop">
+              <div class="mock-window-bar"><span></span><span></span><span></span><i>Área de trabalho</i></div>
+              <div class="mock-content">
+                <div class="mock-sidebar"><b></b><i></i><i></i><i></i></div>
+                <div class="mock-dashboard"><small>Visão geral</small><strong></strong><div class="mock-chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+              </div>
+              <div class="mock-share-button"><span>↗</span> Compartilhar tela</div>
+              <svg class="demo-cursor" viewBox="0 0 24 24"><path d="M4 2.5v17l4.7-4.6 3.3 6.6 3-1.5-3.4-6.4 6.5-.2L4 2.5Z"/></svg>
+              <span class="demo-click"></span>
+            </div>
+          </div>
+          <div class="demo-connection"><span class="signal-line"></span><span class="signal-packet"></span><small>P2P</small></div>
+          <div class="demo-device demo-receiver">
+            <div class="device-label"><span class="device-dot receiver-dot"></span> SUPORTE</div>
+            <div class="mock-desktop receiver-screen">
+              <div class="mock-window-bar"><span></span><span></span><span></span><i>Visualizador de sessão</i></div>
+              <div class="receiver-waiting"><span class="waiting-icon">◌</span><small>Aguardando tela...</small></div>
+              <div class="received-screen">
+                <div class="received-top"><span></span><small>TELA RECEBIDA</small></div>
+                <div class="received-layout"><i></i><div><b></b><b></b><b></b><span></span></div></div>
+                <div class="received-status"><i></i> Conectado</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="demo-caption">Você autoriza o compartilhamento. O suporte recebe a tela.</p>
+      </div>
     </section>
     <section class="workspace" aria-label="Sessão de suporte">
       <aside class="panel session-panel">
