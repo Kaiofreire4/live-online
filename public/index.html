@@ -3,20 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pideias Telas | Compartilhamento P2P</title>
+  <title>Pideias Telas | Suporte ao vivo</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <meta name="theme-color" content="#090a0f">
+  <meta name="theme-color" content="#0b1110">
+  <meta name="description" content="Compartilhe sua tela e converse com o suporte em tempo real.">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <main>
-    <header><div class="brand"><span class="mark">↗</span> pideias telas</div><div class="network"><i></i> conexão pronta · P2P</div></header>
-    <section class="hero"><div class="eyebrow">Compartilhe sem atravessadores</div><h1>Sua tela.<br><em>Direto para eles.</em></h1><p>Transmissão de tela em tempo real, com WebRTC e o mínimo de latência possível. Sem upload de vídeo. Sem complicação.</p></section>
-    <section class="workspace">
-      <aside class="panel">
-        <h2>Comece uma sessão</h2><small>Crie uma sala e envie o código para seu amigo.</small>
-        <button class="primary" id="start">Iniciar Transmissão</button>
-        <button class="stop" id="stop" type="button">Parar transmissão</button>
+    <header>
+      <a class="brand" href="/" aria-label="Pideias Telas, página inicial"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 17 17 5M7 5h10v10"/></svg></span><span>pideias<span class="brand-light"> telas</span></span></a>
+      <div class="network connecting" id="network-status" aria-live="polite"><i></i><span>Conectando ao servidor</span></div>
+    </header>
+    <section class="hero">
+      <div class="eyebrow"><span></span> Atendimento remoto, sem complicação</div>
+      <h1>Ajuda humana,<br><em>na hora certa.</em></h1>
+      <p>Compartilhe sua tela e converse com alguém do suporte em uma sessão privada. Você escolhe o que compartilhar e pode encerrar quando quiser.</p>
+      <div class="hero-points" aria-label="Recursos"><span><i>✓</i> Compartilhamento P2P</span><span><i>✓</i> Voz e chat integrados</span><span><i>✓</i> Você mantém o controle</span></div>
+    </section>
+    <section class="workspace" aria-label="Sessão de suporte">
+      <aside class="panel session-panel">
+        <div class="section-kicker">01 <span>·</span> INICIAR ATENDIMENTO</div>
+        <h2>Compartilhe com o suporte</h2><small class="panel-intro">Crie uma sala e envie o código para a pessoa que vai ajudar você.</small>
+        <button class="primary" id="start"><span class="button-icon" aria-hidden="true">▣</span> Compartilhar minha tela</button>
+        <p class="privacy-note"><span aria-hidden="true">◈</span> O navegador pedirá sua autorização antes de compartilhar.</p>
+        <button class="stop" id="stop" type="button">Encerrar compartilhamento</button>
         <button class="voice" id="voice" type="button">Ativar microfone</button>
         <div class="audio-controls" id="audio-controls">
           <div class="audio-control-row"><span>Áudio da tela</span><button class="audio-toggle" id="screen-audio" type="button">Ativo</button></div>
@@ -33,22 +44,29 @@
           <small id="call-detail">A chamada inicia ao conectar uma sala.</small>
           <div class="mic-state" id="mic-state">Microfone desligado</div>
         </div>
-        <div class="room-code" id="room-code"><label>ID DA SALA</label><div class="code-line"><strong id="room-id">------</strong><button class="copy" id="copy">Copiar</button></div></div>
-        <div class="divider">ou entre em uma sala</div>
-        <input id="name-input" maxlength="30" placeholder="SEU NOME" autocomplete="name">
-        <div class="room"><input id="room-input" maxlength="6" placeholder="ID DA SALA" autocomplete="off"><button id="join">Conectar / Assistir</button></div>
+        <div class="room-code" id="room-code"><label for="room-id">CÓDIGO DA SESSÃO</label><div class="code-line"><strong id="room-id">------</strong><button class="copy" id="copy" type="button">Copiar código</button></div><small>Envie este código somente para a pessoa que vai atender você.</small></div>
+        <div class="divider"><span>ou entre em uma sessão</span></div>
+        <label class="field-label" for="name-input">Seu nome</label>
+        <input id="name-input" maxlength="30" placeholder="Como podemos chamar você?" autocomplete="name">
+        <label class="field-label room-label" for="room-input">Código recebido</label>
+        <div class="room"><input id="room-input" maxlength="6" placeholder="Ex.: A1B2C3" autocomplete="off" aria-label="Código da sessão"><button id="join" type="button">Entrar</button></div>
         <div class="status" id="status">Pronto para conectar.</div>
       </aside>
-      <div class="videos">
-        <div class="video-card"><div class="video-head"><span>Minha tela</span><span class="tag">LOCAL</span></div><video id="local-video" autoplay muted playsinline></video></div>
-        <div class="video-card"><div class="video-head"><span>Tela recebida</span><div class="video-actions"><span class="tag">AO VIVO</span><select class="quality" id="quality" aria-label="Qualidade da transmissão"><option value="auto">Auto</option><option value="360p">360p</option><option value="480p">480p</option><option value="720p" selected>720p</option><option value="1080p">1080p</option></select><button class="sound" id="sound" type="button">Ativar som</button><button class="fullscreen" id="fullscreen" type="button">Tela cheia</button></div></div><video id="remote-video" autoplay muted controls playsinline></video><small class="stream-metrics" id="stream-metrics" aria-live="polite">Qualidade: aguardando transmissão...</small></div>
+      <div class="video-column">
+        <div class="video-toolbar"><div><span class="live-indicator"></span><strong>Espaço da sessão</strong></div><span>Áudio e vídeo protegidos pela conexão do navegador</span></div>
+        <div class="videos">
+          <div class="video-card"><div class="video-head"><span><i class="screen-icon">▣</i> Minha tela</span><span class="tag local-tag">PRÉVIA</span></div><div class="video-stage"><div class="video-placeholder"><span class="placeholder-icon">▣</span><strong>Sua prévia aparece aqui</strong><small>Inicie o compartilhamento para começar</small></div><video id="local-video" autoplay muted playsinline></video></div></div>
+          <div class="video-card"><div class="video-head"><span><i class="screen-icon">▣</i> Tela do suporte</span><div class="video-actions"><span class="tag live-tag">AO VIVO</span><select class="quality" id="quality" aria-label="Qualidade da transmissão"><option value="auto">Auto</option><option value="360p">360p</option><option value="480p">480p</option><option value="720p" selected>720p</option><option value="1080p">1080p</option></select><button class="sound" id="sound" type="button">Ativar som</button><button class="fullscreen" id="fullscreen" type="button">Tela cheia</button></div></div><div class="video-stage"><div class="video-placeholder"><span class="placeholder-icon">◉</span><strong>Aguardando a outra pessoa</strong><small>Quando ela compartilhar, a tela aparecerá aqui</small></div><video id="remote-video" autoplay muted controls playsinline></video></div><small class="stream-metrics" id="stream-metrics" aria-live="polite">Qualidade: aguardando transmissão...</small></div>
+        </div>
+        <div class="secure-caption"><span>✳</span> A transmissão de vídeo é ponto a ponto; o servidor coordena a conexão.</div>
       </div>
     </section>
     <section class="panel chat">
-      <div class="chat-head"><h2>Chat da sala</h2><small>Texto em tempo real</small></div>
+      <div class="chat-head"><div><div class="section-kicker">02 <span>·</span> CONVERSA</div><h2>Mensagens da sessão</h2></div><small><span class="chat-dot"></span> Texto em tempo real</small></div>
       <div class="messages" id="messages"><div class="message"><strong>Pideias Telas</strong><p>As mensagens da sala aparecerão aqui.</p></div></div>
-      <form class="chat-form" id="chat-form"><input id="chat-input" maxlength="500" placeholder="Escreva uma mensagem..." autocomplete="off"><button class="primary" type="submit">Enviar</button></form>
+      <form class="chat-form" id="chat-form"><input id="chat-input" maxlength="500" placeholder="Escreva uma mensagem..." autocomplete="off" aria-label="Mensagem"><button class="primary" type="submit">Enviar <span aria-hidden="true">↗</span></button></form>
     </section>
+    <footer><span>pideias telas</span><span>Compartilhe somente com pessoas em quem você confia.</span></footer>
   </main>
   <script src="/app.js" defer></script>
 </body>

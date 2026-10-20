@@ -28,6 +28,8 @@ const messages = document.querySelector('#messages');
 const roomCode = document.querySelector('#room-code');
 const roomId = document.querySelector('#room-id');
 const copyButton = document.querySelector('#copy');
+const networkStatus = document.querySelector('#network-status');
+const sessionPanel = document.querySelector('.session-panel');
 
 const localHost = ['localhost', '127.0.0.1'].includes(location.hostname);
 const signalingUrl = localHost
@@ -59,6 +61,14 @@ const videoQuality = {
 let qualityMonitor;
 
 const setStatus = (text) => { status.textContent = text; };
+const setNetworkStatus = (state, text) => {
+  networkStatus.className = `network ${state}`;
+  networkStatus.querySelector('span').textContent = text;
+};
+const setVideoSource = (video, stream) => {
+  video.srcObject = stream;
+  video.closest('.video-card')?.classList.toggle('has-media', Boolean(stream));
+};
 const showCallStatus = (state, detail) => {
   callStatus.classList.add('visible');
   callState.textContent = state === 'connected' ? 'Conectada' : state === 'connecting' ? 'Conectando...' : 'Indisponível';
@@ -260,7 +270,7 @@ const makePeer = (connectionId = null) => {
     if (track.kind === 'audio') return;
     const remoteStream = remoteVideo.srcObject || new MediaStream();
     if (!remoteStream.getTracks().includes(track)) remoteStream.addTrack(track);
-    remoteVideo.srcObject = streams[0] || remoteStream;
+    setVideoSource(remoteVideo, streams[0] || remoteStream);
     // Start muted so browsers allow the live video to autoplay; audio is opt-in.
     remoteVideo.muted = true;
     if (role === 'viewer') startQualityMonitor(peer);
@@ -304,13 +314,13 @@ const flushCandidates = async (connection, key) => {
   pendingCandidates.delete(key);
 };
 
-socket.onopen = () => setStatus('Sinalização conectada. Escolha uma ação.');
-socket.onerror = () => setStatus('Servidor de sinalização indisponível.');
-socket.onclose = () => setStatus('Servidor de sinalização desconectado.');
+socket.onopen = () => { setNetworkStatus('online', 'Servidor conectado'); setStatus('Sinalização conectada. Escolha uma ação.'); };
+socket.onerror = () => { setNetworkStatus('offline', 'Servidor indisponível'); setStatus('Servidor de sinalização indisponível.'); };
+socket.onclose = () => { setNetworkStatus('offline', 'Servidor desconectado'); setStatus('Servidor de sinalização desconectado.'); };
 socket.onmessage = async ({ data }) => {
   const message = JSON.parse(data);
   if (message.type === 'room-created') { roomId.textContent = message.roomId; roomCode.classList.add('visible'); stopButton.classList.add('visible'); setStatus('Sala criada. Aguardando seu amigo.'); }
-  if (message.type === 'joined-room') { viewerId = message.viewerId; showCallStatus('connecting', 'Conectando à transmissão...'); setStatus('Sala encontrada. Conectando...'); await ensureVoice(); }
+  if (message.type === 'joined-room') { viewerId = message.viewerId; sessionPanel.classList.add('active'); showCallStatus('connecting', 'Conectando à transmissão...'); setStatus('Sala encontrada. Conectando...'); await ensureVoice(); }
   if (message.type === 'viewer-joined') {
     viewerNames.set(message.viewerId, message.name || `Espectador ${message.viewerId.slice(0, 4)}`);
     showCallStatus('connecting', 'Conectando o áudio do espectador...');
@@ -344,10 +354,10 @@ socket.onmessage = async ({ data }) => {
   }
   if (message.type === 'peer-left') {
     if (role === 'host') { participantAudioTracks.delete(message.viewerId); viewerNames.delete(message.viewerId); hostPeers.get(message.viewerId)?.close(); hostPeers.delete(message.viewerId); removerAudioRemoto(message.viewerId); setStatus('Um espectador saiu da sala.'); }
-    else { stopQualityMonitor(); remoteVideo.srcObject = null; removerAudioRemoto(); setStatus('O transmissor saiu da sala.'); }
+    else { stopQualityMonitor(); setVideoSource(remoteVideo, null); sessionPanel.classList.remove('active'); removerAudioRemoto(); setStatus('O transmissor saiu da sala.'); }
   }
   if (message.type === 'room-ended') {
-    stopQualityMonitor(); remoteVideo.srcObject = null; peer?.close(); peer = null; role = null; viewerId = null; joinButton.disabled = false; removerAudioRemoto(); showCallStatus('error', 'A transmissão foi encerrada.'); setStatus('A transmissão foi encerrada. Você pode entrar em outra sala.');
+    stopQualityMonitor(); setVideoSource(remoteVideo, null); peer?.close(); peer = null; role = null; viewerId = null; sessionPanel.classList.remove('active'); joinButton.disabled = false; removerAudioRemoto(); showCallStatus('error', 'A transmissão foi encerrada.'); setStatus('A transmissão foi encerrada. Você pode entrar em outra sala.');
   }
   if (message.type === 'quality-request' && role === 'host') { await applyVideoQuality(hostPeers.get(message.viewerId), message.quality); return; }
   if (message.type === 'chat') {
@@ -363,10 +373,10 @@ startButton.onclick = async () => {
   try {
     localStream = await navigator.mediaDevices.getDisplayMedia({ video: { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 30, max: 30 }, resizeMode: 'none' }, audio: true });
     localStream.getVideoTracks()[0].contentHint = 'detail';
-    localVideo.srcObject = localStream; role = 'host'; setScreenAudio(localStream.getAudioTracks().length > 0); showCallStatus('connecting', 'Preparando sua chamada de voz...'); await ensureVoice();
+    setVideoSource(localVideo, localStream); role = 'host'; setScreenAudio(localStream.getAudioTracks().length > 0); showCallStatus('connecting', 'Preparando sua chamada de voz...'); await ensureVoice();
     if (!send({ type: 'create-room' })) return;
-    startButton.disabled = true; setStatus('Tela capturada. Criando sala...');
-    localStream.getVideoTracks()[0].onended = () => setStatus('Captura encerrada.');
+    sessionPanel.classList.add('active'); startButton.disabled = true; setStatus('Tela capturada. Criando sala...');
+    localStream.getVideoTracks()[0].onended = () => { setVideoSource(localVideo, null); setStatus('Captura encerrada.'); };
   } catch (error) { setStatus(error.name === 'NotAllowedError' ? 'A captura foi cancelada.' : 'Não foi possível capturar a tela.'); }
 };
 let voicePending = null;
@@ -388,7 +398,7 @@ const renegotiateVoice = async () => {
   }
 };
 stopButton.onclick = () => {
-  send({ type: 'end-room' }); stopQualityMonitor(); localStream?.getTracks().forEach((track) => track.stop()); voiceStream?.getTracks().forEach((track) => track.stop()); hostPeers.forEach((connection) => connection.close()); hostPeers.clear(); participantAudioTracks.clear(); peer?.close(); peer = null; localStream = null; voiceStream = null; role = null; viewerId = null; localVideo.srcObject = null; remoteVideo.srcObject = null; removerAudioRemoto(); stopButton.classList.remove('visible'); roomCode.classList.remove('visible'); startButton.disabled = false; joinButton.disabled = false; showCallStatus('error', 'Transmissão encerrada.'); setStatus('Transmissão encerrada. Você pode iniciar outra sem atualizar a página.');
+  send({ type: 'end-room' }); stopQualityMonitor(); localStream?.getTracks().forEach((track) => track.stop()); voiceStream?.getTracks().forEach((track) => track.stop()); hostPeers.forEach((connection) => connection.close()); hostPeers.clear(); participantAudioTracks.clear(); peer?.close(); peer = null; localStream = null; voiceStream = null; role = null; viewerId = null; sessionPanel.classList.remove('active'); setVideoSource(localVideo, null); setVideoSource(remoteVideo, null); removerAudioRemoto(); stopButton.classList.remove('visible'); roomCode.classList.remove('visible'); startButton.disabled = false; joinButton.disabled = false; showCallStatus('error', 'Transmissão encerrada.'); setStatus('Transmissão encerrada. Você pode iniciar outra sem atualizar a página.');
 };
 voiceButton.onclick = async () => {
   if (!voiceStream) return ensureVoice();
